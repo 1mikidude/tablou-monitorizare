@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitorizare Stare Tablou</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;400;600&display=swap');
+        
+        body {
+            background-color: #0a0a0c;
+            color: #f1f5f9;
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+        }
+
+        .header-font { font-family: 'Orbitron', sans-serif; }
+
+        .panel-glass {
+            background: linear-gradient(145deg, rgba(20, 20, 25, 0.95), rgba(10, 10, 15, 0.95));
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+        }
+
+        .circuit-card {
+            background: rgba(30, 30, 40, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-left: 4px solid #334155;
+            transition: all 0.3s ease;
+        }
+
+        .circuit-on {
+            border-left-color: #10b981;
+            background: rgba(16, 185, 129, 0.05);
+            border-right: 1px solid rgba(16, 185, 129, 0.1);
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #3f3f46;
+        }
+
+        .status-dot-on {
+            background-color: #10b981;
+            box-shadow: 0 0 12px #10b981;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .label-tech {
+            font-size: 0.6rem;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            color: #71717a;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8 flex items-center justify-center">
+
+    <div class="w-full max-w-5xl">
+        <!-- HEADER: DATE SENZOR TEMPERATURA -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="panel-glass rounded-2xl p-5 flex flex-col justify-center items-center md:items-start">
+                <div class="label-tech mb-1">TEMPERATURĂ MEDIU</div>
+                <div class="flex items-baseline gap-2">
+                    <span id="temp-val" class="text-4xl font-bold header-font text-emerald-400">--</span>
+                    <span class="text-lg text-gray-500 font-bold">°C</span>
+                </div>
+            </div>
+            
+            <div class="panel-glass rounded-2xl p-5 flex flex-col justify-center items-center md:items-start">
+                <div class="label-tech mb-1">UMIDITATE</div>
+                <div class="flex items-baseline gap-2">
+                    <span id="hum-val" class="text-4xl font-bold header-font text-sky-400">--</span>
+                    <span class="text-lg text-gray-500 font-bold">%</span>
+                </div>
+            </div>
+
+            <div class="panel-glass rounded-2xl p-5 flex flex-col justify-center">
+                <div class="flex justify-between items-center mb-2">
+                    <div class="label-tech">STATUS CONEXIUNE</div>
+                    <div id="conn-status" class="w-3 h-3 rounded-full bg-red-600"></div>
+                </div>
+                <div class="flex flex-col gap-1 text-[10px] font-mono text-gray-500">
+                    <span id="rssi-val">RSSI: -- dBm</span>
+                    <span id="last-sync">ULTIMUL UPDATE: --:--:--</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- GRID INTRARI OPTOCUPLOARE -->
+        <div class="panel-glass rounded-[2rem] p-6 md:p-10">
+            <div class="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+                <div>
+                    <h1 class="header-font text-xl text-gray-200 tracking-tighter">TABLOU MONITORIZARE</h1>
+                    <p class="text-gray-500 text-xs mt-1">Sistem detecție prezență tensiune (Optocuploare)</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="status-dot-on w-2 h-2"></div>
+                    <span class="label-tech text-emerald-500">Sistem Activ</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="grid-inputs">
+                <!-- Circuitele vor fi populate aici -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configurare etichete conform cerinței
+        const inputLabels = {
+            1: "SIG GENERALA",
+            2: "GENERATOR",
+            3: "UPS 1",
+            4: "UPS 2",
+            5: "UPS 3",
+            6: "AC 1",
+            7: "AC 2",
+            8: "REZERVA"
+        };
+
+        const firebaseConfig = {
+            databaseURL: "https://monitorizate-tablou-verzisori-default-rtdb.europe-west1.firebasedatabase.app/"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const sensorRef = db.ref('monitorizare');
+
+        const container = document.getElementById('grid-inputs');
+
+        // Creare elemente UI
+        for(let i=1; i<=8; i++) {
+            const div = document.createElement('div');
+            div.id = `input-block-${i}`;
+            div.className = `circuit-card rounded-xl p-4 flex flex-col justify-between h-28`;
+            div.innerHTML = `
+                <div class="flex justify-between items-start">
+                    <div class="bg-gray-800/50 px-2 py-0.5 rounded text-[9px] font-bold text-gray-400">IN ${i}</div>
+                    <div id="dot-${i}" class="status-dot"></div>
+                </div>
+                <div>
+                    <div class="text-[11px] font-bold text-gray-200 mb-1">${inputLabels[i]}</div>
+                    <div id="status-text-${i}" class="text-[9px] uppercase tracking-widest text-gray-500 font-semibold italic">Inactiv</div>
+                </div>
+            `;
+            container.appendChild(div);
+        }
+
+        // Listener Date
+        sensorRef.on('value', (snapshot) => {
+            const data = snapshot.val();
+            if(!data) return;
+
+            // Update Indicator Conexiune
+            document.getElementById('conn-status').className = "w-3 h-3 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]";
+            
+            // Update Mediu
+            document.getElementById('temp-val').innerText = data.temp !== undefined ? data.temp : "--";
+            document.getElementById('hum-val').innerText = data.hum !== undefined ? data.hum : "--";
+            document.getElementById('rssi-val').innerText = `RSSI: ${data.rssi || '--'} dBm`;
+            document.getElementById('last-sync').innerText = `ULTIMUL UPDATE: ${new Date().toLocaleTimeString('ro-RO')}`;
+
+            // Update Stare Optocuploare
+            for(let i=1; i<=8; i++) {
+                // Verificăm diverse formate posibile de chei (opto1, in1, sig1_st)
+                const state = data[`opto${i}`] == 1 || data[`in${i}`] == 1 || data[`sig${i}_st`] == 1;
+                
+                const card = document.getElementById(`input-block-${i}`);
+                const dot = document.getElementById(`dot-${i}`);
+                const text = document.getElementById(`status-text-${i}`);
+
+                if(state) {
+                    card.classList.add('circuit-on');
+                    dot.classList.add('status-dot-on');
+                    text.innerText = "ACTIV / ON";
+                    text.classList.replace('text-gray-500', 'text-emerald-500');
+                } else {
+                    card.classList.remove('circuit-on');
+                    dot.classList.remove('status-dot-on');
+                    text.innerText = "INACTIV / OFF";
+                    text.classList.replace('text-emerald-500', 'text-gray-500');
+                }
+            }
+        }, (err) => {
+            document.getElementById('conn-status').className = "w-3 h-3 rounded-full bg-red-600";
+        });
+    </script>
+</body>
+</html>
