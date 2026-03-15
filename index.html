@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Monitorizare Stare Tablou</title>
+    <title>Monitorizare Tablou Verișori</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
@@ -15,6 +15,7 @@
             color: #f1f5f9;
             font-family: 'Inter', sans-serif;
             min-height: 100vh;
+            margin: 0;
         }
 
         .header-font { font-family: 'Orbitron', sans-serif; }
@@ -28,12 +29,12 @@
         .circuit-card {
             background: rgba(30, 30, 40, 0.3);
             border: 1px solid rgba(255, 255, 255, 0.05);
-            border-left: 4px solid #334155;
-            transition: all 0.3s ease;
+            border-left: 4px solid #da3633; /* Roșu implicit (Alerta) */
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .circuit-on {
-            border-left-color: #10b981;
+            border-left-color: #10b981; /* Verde (OK) */
             background: rgba(16, 185, 129, 0.05);
             border-right: 1px solid rgba(16, 185, 129, 0.1);
         }
@@ -42,7 +43,7 @@
             width: 10px;
             height: 10px;
             border-radius: 50%;
-            background-color: #3f3f46;
+            background-color: #da3633;
         }
 
         .status-dot-on {
@@ -52,9 +53,8 @@
         }
 
         @keyframes pulse {
-            0% { opacity: 1; }
+            0%, 100% { opacity: 1; }
             50% { opacity: 0.5; }
-            100% { opacity: 1; }
         }
 
         .label-tech {
@@ -69,7 +69,6 @@
 <body class="p-4 md:p-8 flex items-center justify-center">
 
     <div class="w-full max-w-5xl">
-        <!-- HEADER: DATE SENZOR TEMPERATURA -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div class="panel-glass rounded-2xl p-5 flex flex-col justify-center items-center md:items-start">
                 <div class="label-tech mb-1">TEMPERATURĂ MEDIU</div>
@@ -93,108 +92,104 @@
                     <div id="conn-status" class="w-3 h-3 rounded-full bg-red-600"></div>
                 </div>
                 <div class="flex flex-col gap-1 text-[10px] font-mono text-gray-500">
-                    <span id="rssi-val">RSSI: -- dBm</span>
-                    <span id="last-sync">ULTIMUL UPDATE: --:--:--</span>
+                    <span id="last-sync uppercase">ULTIMUL UPDATE: --:--:--</span>
                 </div>
             </div>
         </div>
 
-        <!-- GRID INTRARI OPTOCUPLOARE -->
         <div class="panel-glass rounded-[2rem] p-6 md:p-10">
-            <div class="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+            <div class="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-gray-800 pb-6">
                 <div>
-                    <h1 class="header-font text-xl text-gray-200 tracking-tighter">TABLOU MONITORIZARE</h1>
+                    <h1 class="header-font text-xl text-gray-200 tracking-tighter uppercase">Tablou Monitorizare Verișori</h1>
                     <p class="text-gray-500 text-xs mt-1">Sistem detecție prezență tensiune (Optocuploare)</p>
                 </div>
                 <div class="flex items-center gap-2">
-                    <div class="status-dot-on w-2 h-2"></div>
-                    <span class="label-tech text-emerald-500">Sistem Activ</span>
+                    <div id="sys-pulse" class="w-2 h-2 rounded-full bg-red-600"></div>
+                    <span id="sys-text" class="label-tech text-red-500">Sistem Offline</span>
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="grid-inputs">
-                <!-- Circuitele vor fi populate aici -->
-            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" id="grid-inputs">
+                </div>
         </div>
     </div>
 
     <script>
-        // Configurare etichete conform cerinței
-        const inputLabels = {
-            1: "SIG GENERALA",
-            2: "GENERATOR",
-            3: "UPS 1",
-            4: "UPS 2",
-            5: "UPS 3",
-            6: "AC 1",
-            7: "AC 2",
-            8: "REZERVA"
-        };
-
+        // Configurare Firebase
         const firebaseConfig = {
             databaseURL: "https://monitorizate-tablou-verzisori-default-rtdb.europe-west1.firebasedatabase.app/"
         };
         
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
-        const sensorRef = db.ref('monitorizare');
+
+        // Numele exacte din baza ta de date (Firebase)
+        const sensorList = ["AC 1", "AC 2", "Generala", "Generator", "Rezerva", "UPS 1"];
 
         const container = document.getElementById('grid-inputs');
 
-        // Creare elemente UI
-        for(let i=1; i<=8; i++) {
+        // Creăm elementele vizuale pentru fiecare senzor
+        sensorList.forEach(nume => {
+            const safeId = nume.replace(/\s+/g, '');
             const div = document.createElement('div');
-            div.id = `input-block-${i}`;
+            div.id = `card-${safeId}`;
             div.className = `circuit-card rounded-xl p-4 flex flex-col justify-between h-28`;
             div.innerHTML = `
                 <div class="flex justify-between items-start">
-                    <div class="bg-gray-800/50 px-2 py-0.5 rounded text-[9px] font-bold text-gray-400">IN ${i}</div>
-                    <div id="dot-${i}" class="status-dot"></div>
+                    <div class="bg-gray-800/50 px-2 py-0.5 rounded text-[9px] font-bold text-gray-400 uppercase tracking-widest">Monitor</div>
+                    <div id="dot-${safeId}" class="status-dot"></div>
                 </div>
                 <div>
-                    <div class="text-[11px] font-bold text-gray-200 mb-1">${inputLabels[i]}</div>
-                    <div id="status-text-${i}" class="text-[9px] uppercase tracking-widest text-gray-500 font-semibold italic">Inactiv</div>
+                    <div class="text-[12px] font-bold text-gray-100 mb-1 tracking-tight">${nume}</div>
+                    <div id="status-${safeId}" class="text-[10px] uppercase tracking-widest text-gray-500 font-bold italic">Verificare...</div>
                 </div>
             `;
             container.appendChild(div);
-        }
+        });
 
-        // Listener Date
-        sensorRef.on('value', (snapshot) => {
+        // Ascultăm datele din ramura principală 'verzisori'
+        db.ref('verzisori').on('value', (snapshot) => {
             const data = snapshot.val();
             if(!data) return;
 
-            // Update Indicator Conexiune
+            // 1. Update Status Sistem & Conexiune
             document.getElementById('conn-status').className = "w-3 h-3 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]";
-            
-            // Update Mediu
-            document.getElementById('temp-val').innerText = data.temp !== undefined ? data.temp : "--";
-            document.getElementById('hum-val').innerText = data.hum !== undefined ? data.hum : "--";
-            document.getElementById('rssi-val').innerText = `RSSI: ${data.rssi || '--'} dBm`;
-            document.getElementById('last-sync').innerText = `ULTIMUL UPDATE: ${new Date().toLocaleTimeString('ro-RO')}`;
+            document.getElementById('sys-pulse').className = "status-dot-on w-2 h-2";
+            document.getElementById('sys-text').innerText = "Sistem Online";
+            document.getElementById('sys-text').className = "label-tech text-emerald-500";
+            document.getElementById('last-sync').innerText = "ULTIMUL UPDATE: " + new Date().toLocaleTimeString('ro-RO');
 
-            // Update Stare Optocuploare
-            for(let i=1; i<=8; i++) {
-                // Verificăm diverse formate posibile de chei (opto1, in1, sig1_st)
-                const state = data[`opto${i}`] == 1 || data[`in${i}`] == 1 || data[`sig${i}_st`] == 1;
-                
-                const card = document.getElementById(`input-block-${i}`);
-                const dot = document.getElementById(`dot-${i}`);
-                const text = document.getElementById(`status-text-${i}`);
-
-                if(state) {
-                    card.classList.add('circuit-on');
-                    dot.classList.add('status-dot-on');
-                    text.innerText = "ACTIV / ON";
-                    text.classList.replace('text-gray-500', 'text-emerald-500');
-                } else {
-                    card.classList.remove('circuit-on');
-                    dot.classList.remove('status-dot-on');
-                    text.innerText = "INACTIV / OFF";
-                    text.classList.replace('text-emerald-500', 'text-gray-500');
-                }
+            // 2. Update Mediu (Temperatura & Umiditate din folderul 'setari')
+            if(data.setari) {
+                document.getElementById('temp-val').innerText = data.setari.temperatura !== undefined ? data.setari.temperatura : "--";
+                document.getElementById('hum-val').innerText = data.setari.umiditate !== undefined ? data.setari.umiditate : "--";
             }
-        }, (err) => {
+
+            // 3. Update Siguranțe (din folderul 'sigurante')
+            if(data.sigurante) {
+                sensorList.forEach(nume => {
+                    const safeId = nume.replace(/\s+/g, '');
+                    const stare = data.sigurante[nume]; // Așteaptă "OK" sau "ALERTA"
+                    
+                    const card = document.getElementById(`card-${safeId}`);
+                    const dot = document.getElementById(`dot-${safeId}`);
+                    const text = document.getElementById(`status-${safeId}`);
+
+                    if(stare === "OK") {
+                        card.classList.add('circuit-on');
+                        dot.className = "status-dot status-dot-on";
+                        text.innerText = "TENSIUNE OK";
+                        text.classList.replace('text-gray-500', 'text-emerald-500');
+                    } else {
+                        card.classList.remove('circuit-on');
+                        dot.className = "status-dot";
+                        text.innerText = "LIPSĂ TENSIUNE";
+                        text.classList.replace('text-emerald-500', 'text-gray-500');
+                    }
+                });
+            }
+        }, (error) => {
+            console.error("Eroare Firebase:", error);
             document.getElementById('conn-status').className = "w-3 h-3 rounded-full bg-red-600";
         });
     </script>
