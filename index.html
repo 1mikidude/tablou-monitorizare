@@ -25,15 +25,15 @@
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div class="panel-glass rounded-2xl p-5 flex flex-col justify-center items-center md:items-start">
                 <div class="label-tech mb-1">TEMPERATURĂ</div>
-                <div class="flex items-baseline gap-2"><span id="temp-val" class="text-4xl font-bold header-font text-emerald-400">--</span><span class="text-lg text-gray-500 font-bold">°C</span></div>
+                <div class="flex items-baseline gap-2"><span id="temp-val" class="text-4xl font-bold header-font text-emerald-400">--</span><span class="text-lg text-gray-500 font-bold text-gray-400">°C</span></div>
             </div>
             <div class="panel-glass rounded-2xl p-5 flex flex-col justify-center items-center md:items-start">
                 <div class="label-tech mb-1">UMIDITATE</div>
-                <div class="flex items-baseline gap-2"><span id="hum-val" class="text-4xl font-bold header-font text-sky-400">--</span><span class="text-lg text-gray-500 font-bold">%</span></div>
+                <div class="flex items-baseline gap-2"><span id="hum-val" class="text-4xl font-bold header-font text-sky-400">--</span><span class="text-lg text-gray-500 font-bold text-gray-400">%</span></div>
             </div>
             <div class="panel-glass rounded-2xl p-5 flex flex-col justify-center">
                 <div class="flex justify-between items-center mb-2"><div class="label-tech">CONEXIUNE</div><div id="conn-status" class="w-3 h-3 rounded-full bg-red-600"></div></div>
-                <div id="last-sync" class="text-[10px] font-mono text-gray-500 uppercase text-center md:text-left">UPDATE: --:--:--</div>
+                <div id="last-sync" class="text-[10px] font-mono text-gray-500 uppercase">Așteptare date...</div>
             </div>
         </div>
 
@@ -41,9 +41,9 @@
             <div class="mb-8 border-b border-gray-800 pb-6 flex justify-between items-end">
                 <div>
                     <h1 class="header-font text-xl text-gray-200 tracking-tighter uppercase">Monitorizare Tablou Verișori</h1>
-                    <p class="text-gray-500 text-xs mt-1 italic">Sistem 8 Optocuploare</p>
+                    <p class="text-gray-500 text-[10px] mt-1 italic">Sistem 8 Optocuploare</p>
                 </div>
-                <div class="flex items-center gap-2"><div id="sys-pulse" class="w-2 h-2 rounded-full bg-red-600"></div><span id="sys-text" class="label-tech text-red-500">SISTEM ONLINE</span></div>
+                <div class="flex items-center gap-2"><div id="sys-pulse" class="w-2 h-2 rounded-full bg-red-600"></div><span id="sys-text" class="label-tech text-red-500 uppercase">Offline</span></div>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="grid-inputs"></div>
         </div>
@@ -54,7 +54,6 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // ORDINEA DIN POZA TA
         const sensors = [
             { label: "GENERALA", key: "generala" },
             { label: "GENERATOR", key: "generator" },
@@ -71,10 +70,7 @@
             const div = document.createElement('div');
             div.id = `card-${i}`;
             div.className = `circuit-card rounded-xl p-4 flex flex-col justify-between h-28`;
-            div.innerHTML = `
-                <div class="flex justify-between items-start"><div class="bg-gray-800/50 px-2 py-0.5 rounded text-[9px] font-bold text-gray-400 uppercase">IN ${i+1}</div><div id="dot-${i}" class="status-dot"></div></div>
-                <div><div class="text-[12px] font-bold text-gray-100 mb-1 uppercase tracking-tight">${s.label}</div><div id="status-${i}" class="text-[9px] uppercase text-gray-500 font-bold italic">LIPSĂ DATE</div></div>
-            `;
+            div.innerHTML = `<div class="flex justify-between items-start"><div class="bg-gray-800/50 px-2 py-0.5 rounded text-[9px] font-bold text-gray-400 uppercase">IN ${i+1}</div><div id="dot-${i}" class="status-dot"></div></div><div><div class="text-[12px] font-bold text-gray-100 mb-1 uppercase tracking-tight">${s.label}</div><div id="status-${i}" class="text-[9px] uppercase text-gray-500 font-bold italic">Căutare...</div></div>`;
             container.appendChild(div);
         });
 
@@ -84,6 +80,7 @@
 
             document.getElementById('conn-status').className = "w-3 h-3 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]";
             document.getElementById('sys-pulse').className = "status-dot-on w-2 h-2";
+            document.getElementById('sys-text').innerText = "Activ";
             document.getElementById('sys-text').className = "label-tech text-emerald-500";
             document.getElementById('last-sync').innerText = "UPDATE: " + new Date().toLocaleTimeString('ro-RO');
 
@@ -93,12 +90,11 @@
             }
 
             if(data.sigurante) {
-                // Transformăm cheile din Firebase în litere mici pentru comparație ușoară
                 const fireData = {};
                 Object.keys(data.sigurante).forEach(k => { fireData[k.toLowerCase()] = data.sigurante[k]; });
 
                 sensors.forEach((s, i) => {
-                    const stare = fireData[s.key]; // Căutăm cheia (ex: "generala") indiferent cum e scrisă în Firebase
+                    const stare = fireData[s.key];
                     const card = document.getElementById(`card-${i}`);
                     const dot = document.getElementById(`dot-${i}`);
                     const text = document.getElementById(`status-${i}`);
@@ -111,7 +107,7 @@
                     } else {
                         card.classList.remove('circuit-on');
                         dot.className = "status-dot";
-                        text.innerText = stare === "ALERTA" ? "LIPSĂ TENSIUNE" : "DECONECTAT";
+                        text.innerText = stare === "ALERTA" ? "LIPSĂ TENSIUNE" : "LIPSĂ DATE";
                         text.className = stare === "ALERTA" ? "text-[9px] uppercase text-red-500 font-bold" : "text-[9px] uppercase text-gray-600 font-bold";
                     }
                 });
