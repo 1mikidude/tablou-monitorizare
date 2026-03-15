@@ -21,7 +21,7 @@
     </style>
 </head>
 <body class="p-4 md:p-8 flex items-center justify-center">
-    <div class="w-full max-w-5xl">
+    <div class="w-full max-w-6xl">
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div class="panel-glass rounded-2xl p-5 flex flex-col justify-center items-center md:items-start">
                 <div class="label-tech mb-1">TEMPERATURĂ</div>
@@ -39,17 +39,23 @@
             </div>
             <div class="panel-glass rounded-2xl p-5 flex flex-col justify-center">
                 <div class="flex justify-between items-center mb-2">
-                    <div class="label-tech">CONEXIUNE</div>
+                    <div class="label-tech">STATUS CONEXIUNE</div>
                     <div id="conn-status" class="w-3 h-3 rounded-full bg-red-600"></div>
                 </div>
-                <div class="text-[10px] font-mono text-gray-500" id="last-sync uppercase">UPDATE: --:--:--</div>
+                <div class="text-[10px] font-mono text-gray-500" id="last-sync">ULTIMUL UPDATE: --:--:--</div>
             </div>
         </div>
 
         <div class="panel-glass rounded-[2rem] p-6 md:p-10">
-            <div class="mb-8 border-b border-gray-800 pb-6">
-                <h1 class="header-font text-xl text-gray-200 uppercase tracking-tighter">MONITORIZARE 8 CANALE</h1>
-                <p class="text-gray-500 text-xs mt-1 italic">Sistem Optocuploare - Tablou Verișori</p>
+            <div class="mb-8 border-b border-gray-800 pb-6 flex justify-between items-end">
+                <div>
+                    <h1 class="header-font text-xl text-gray-200 tracking-tighter uppercase">Monitorizare Tablou Verișori</h1>
+                    <p class="text-gray-500 text-xs mt-1 italic">Sistem 8 Optocuploare</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div id="sys-pulse" class="w-2 h-2 rounded-full bg-red-600"></div>
+                    <span id="sys-text" class="label-tech text-red-500">Sistem Online</span>
+                </div>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="grid-inputs"></div>
         </div>
@@ -60,67 +66,60 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // LISTA COMPLETĂ DE 8 SENZORI (Exact cum apar sau vor apărea în Firebase)
+        // LISTA COMPLETĂ DE 8 SENZORI
         const sensorList = [
-            "SIG GENERALA", "GENERATOR", "UPS 1", "UPS 2", 
-            "UPS 3", "AC 1", "AC 2", "REZERVA"
+            "Generala", "Generator", "UPS 1", "UPS 2", 
+            "UPS 3", "AC 1", "AC 2", "Rezerva"
         ];
 
         const container = document.getElementById('grid-inputs');
+
+        // Generăm cele 8 carduri
         sensorList.forEach((nume, index) => {
-            const safeId = "senzor-" + (index + 1);
+            const safeId = "opt-" + (index + 1);
             const div = document.createElement('div');
             div.id = `card-${safeId}`;
             div.className = `circuit-card rounded-xl p-4 flex flex-col justify-between h-28`;
             div.innerHTML = `
                 <div class="flex justify-between items-start">
-                    <div class="bg-gray-800/50 px-2 py-0.5 rounded text-[9px] font-bold text-gray-400">INT ${index + 1}</div>
+                    <div class="bg-gray-800/50 px-2 py-0.5 rounded text-[9px] font-bold text-gray-400">IN ${index + 1}</div>
                     <div id="dot-${safeId}" class="status-dot"></div>
                 </div>
                 <div>
-                    <div class="text-[11px] font-bold text-gray-100 mb-1">${nume}</div>
-                    <div id="status-${safeId}" class="text-[9px] uppercase text-gray-500 font-bold">Verificare...</div>
+                    <div class="text-[12px] font-bold text-gray-100 mb-1 uppercase tracking-tight">${nume}</div>
+                    <div id="status-${safeId}" class="text-[9px] uppercase text-gray-500 font-bold italic">Verificare...</div>
                 </div>
             `;
             container.appendChild(div);
         });
 
+        // Ascultăm datele din Firebase
         db.ref('verzisori').on('value', (snapshot) => {
             const data = snapshot.val();
             if(!data) return;
 
-            // Update Header
-            document.getElementById('conn-status').classList.replace('bg-red-600', 'bg-emerald-500');
-            document.getElementById('last-sync').innerText = "ULTIMUL UPDATE: " + new Date().toLocaleTimeString('ro-RO');
+            // Update Indicatori Sistem
+            document.getElementById('conn-status').className = "w-3 h-3 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]";
+            document.getElementById('sys-pulse').className = "status-dot-on w-2 h-2";
+            document.getElementById('sys-text').innerText = "Sistem Activ";
+            document.getElementById('sys-text').className = "label-tech text-emerald-500";
+            document.getElementById('last-sync').innerText = "UPDATE: " + new Date().toLocaleTimeString('ro-RO');
 
-            // Temperatura/Umiditate din 'setari'
+            // Update Mediu
             if(data.setari) {
                 document.getElementById('temp-val').innerText = data.setari.temperatura || "--";
                 document.getElementById('hum-val').innerText = data.setari.umiditate || "--";
             }
 
-            // Logica pentru cele 8 siguranțe (din folderul 'sigurante')
+            // Update cele 8 Optocuploare
             if(data.sigurante) {
-                // Mapăm numele din interfață cu cheile din Firebase (care pot fi cu spații sau simple)
-                // Exemplu: "AC 1" din interfață va căuta data.sigurante["AC 1"]
-                const mapping = {
-                    "senzor-1": "Generala", 
-                    "senzor-2": "Generator", 
-                    "senzor-3": "UPS 1", 
-                    "senzor-4": "UPS 2", 
-                    "senzor-5": "UPS 3", 
-                    "senzor-6": "AC 1", 
-                    "senzor-7": "AC 2", 
-                    "senzor-8": "Rezerva"
-                };
-
-                Object.keys(mapping).forEach(id => {
-                    const cheieFirebase = mapping[id];
-                    const stare = data.sigurante[cheieFirebase]; 
+                sensorList.forEach((nume, index) => {
+                    const safeId = "opt-" + (index + 1);
+                    const stare = data.sigurante[nume]; // Caută "OK" sau "ALERTA" în Firebase
                     
-                    const card = document.getElementById(`card-${id}`);
-                    const dot = document.getElementById(`dot-${id}`);
-                    const text = document.getElementById(`status-${id}`);
+                    const card = document.getElementById(`card-${safeId}`);
+                    const dot = document.getElementById(`dot-${safeId}`);
+                    const text = document.getElementById(`status-${safeId}`);
 
                     if(stare === "OK") {
                         card.classList.add('circuit-on');
